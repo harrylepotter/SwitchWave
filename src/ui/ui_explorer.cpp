@@ -178,7 +178,8 @@ void Explorer::render() {
         want_explore_backward |= ImGui::Button(buttonstr, ImVec2(-1, 0));
     }
 
-    auto reserved_height = ImGui::GetStyle().ItemSpacing.y + ImGui::GetTextLineHeightWithSpacing();
+    // Two lines: the navigation hint, plus the remote control address below it
+    auto reserved_height = ImGui::GetStyle().ItemSpacing.y + 2 * ImGui::GetTextLineHeightWithSpacing();
 
     if (ImGui::BeginListBox("##fsentries", ImVec2(-1, -reserved_height))) {
         SW_SCOPEGUARD([] { ImGui::EndListBox(); });
@@ -236,6 +237,12 @@ void Explorer::render() {
 
     ImGui::SetCursorPos(ImGui::GetCursorPos() + ImVec2(this->screen_rel_width(0.2), ImGui::GetStyle().ItemSpacing.y));
     ImGui::Text("Navigate with \ue0ea");
+
+    // The remote address goes on the always-visible footer rather than the settings tab:
+    // someone reaching for the remote most likely can't navigate to settings to read it.
+    // It gets its own line: appended to the hint above it ran past the column edge and
+    // silently clipped the tail of the address, which is the one part that matters
+    ImGui::TextUnformatted(this->context.remote.status().c_str());
 }
 
 } // namespace sw::ui

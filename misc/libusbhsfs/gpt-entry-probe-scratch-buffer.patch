@@ -1,0 +1,39 @@
+--- source/usbhsfs_mount.c
++++ source/usbhsfs_mount.c
+@@ -614,10 +614,23 @@
+     GuidPartitionTableEntry gpt_entry = {0};
+     u32 part_count = 0, part_per_block = 0, part_array_block_count = 0;
+     u64 part_lba = 0;
++    u8 *probe_block = NULL;
+ 
+     /* Get GPT header. */
+     if (!usbHsFsMountGetGuidPartitionTableHeader(lun_ctx, block, gpt_lba, &gpt_header, false)) return;
+ 
++    /* Allocate a scratch block for volume probing. usbHsFsMountParseGuidPartitionTableEntry() reuses the */
++    /* buffer it is handed to read VBRs and EXT superblocks, so handing it `block` would clobber the      */
++    /* partition array entries we are still iterating over -- every entry sharing a block with an already */
++    /* probed one would then be parsed out of the probed volume's boot sector instead. Give it its own    */
++    /* buffer so the partition array stays intact.                                                        */
++    probe_block = malloc(lun_ctx->block_length);
++    if (!probe_block)
++    {
++        USBHSFS_LOG_MSG("Failed to allocate memory for the GPT probe block! (interface %d, LUN %u).", lun_ctx->usb_if_id, lun_ctx->lun);
++        return;
++    }
++
+     /* Get GPT partition entry count. Only process the first GPT_PARTITION_LIMIT entries if there's more than that. */
+     part_count = gpt_header.partition_array_count;
+     if (part_count > GPT_PARTITION_LIMIT) part_count = GPT_PARTITION_LIMIT;
+@@ -641,9 +654,11 @@
+         {
+             /* Parse partition entry. */
+             memcpy(&gpt_entry, block + (j * sizeof(GuidPartitionTableEntry)), sizeof(GuidPartitionTableEntry));
+-            usbHsFsMountParseGuidPartitionTableEntry(lun_ctx, block, &gpt_entry);
++            usbHsFsMountParseGuidPartitionTableEntry(lun_ctx, probe_block, &gpt_entry);
+         }
+     }
++
++    free(probe_block);
+ }
+ 
+ static bool usbHsFsMountGetGuidPartitionTableHeader(UsbHsFsDriveLogicalUnitContext *lun_ctx, u8 *block, u64 gpt_lba, GuidPartitionTableHeader *gpt_header, bool is_bkp)

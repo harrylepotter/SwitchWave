@@ -308,6 +308,11 @@ class PlayerMenu final: public Widget {
 
     public:
         PlayerMenu(Renderer &renderer, Context &context, LibmpvController &lmpv);
+
+    private:
+        void render_subtitle_download();
+
+    public:
         virtual ~PlayerMenu() override;
 
         virtual bool update_state(PadState &pad, HidTouchScreenState &touch) override;
@@ -524,7 +529,8 @@ class PlayerMenu final: public Widget {
             .name          = "volume",
             .display_name  = "##volumeslider",
             .min           = 0,
-            .max           = 150,
+            // Matches volume-max set in LibmpvController::initialize; mpv clamps to it
+            .max           = 200,
             .default_value = 100,
             .format        = "%.1f%%",
         };

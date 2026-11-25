@@ -1,0 +1,18 @@
+--- source/usbhsfs_scsi.c
++++ source/usbhsfs_scsi.c
+@@ -472,7 +472,14 @@
+             eject_supported = true;
+         } else {
+             USBHSFS_LOG_MSG("Prevent/Allow Medium Removal failed! (interface %d, LUN %d).", drive_ctx->usb_if_id, lun);
+-            if (!g_mediumPresent) goto end;
++
++            /* Some USB bridges advertise RMB == 1 but answer this optional command with a NOT READY / */
++            /* MEDIUM NOT PRESENT sense pair even though a medium is very much present (e.g. Realtek  */
++            /* RTL9210 NVMe enclosures, which report themselves as "Generic STORAGE DEVICE"). Don't    */
++            /* take that answer as authoritative -- clear the flag and let the Test Unit Ready and     */
++            /* Read Capacity commands below decide, both of which abort LUN startup if they fail.      */
++            /* Card readers with no medium inserted still get rejected by Test Unit Ready.             */
++            g_mediumPresent = true;
+         }
+     }
+ 

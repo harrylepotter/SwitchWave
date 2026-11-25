@@ -59,6 +59,14 @@ int Context::read_from_file() {
                 self->override_screenshot_button = v != "no";
             else if (n == "history-size")
                 self->history_size = std::atoi(v.data());
+            else if (n == "opensubtitles-api-key")
+                self->opensubtitles_api_key   = v;
+            else if (n == "opensubtitles-username")
+                self->opensubtitles_username  = v;
+            else if (n == "opensubtitles-password")
+                self->opensubtitles_password  = v;
+            else if (n == "opensubtitles-languages")
+                self->opensubtitles_languages = v;
         } else if (s.find("network") != std::string_view::npos) {
             auto name = s.substr(s.find(':')+1);
 
@@ -124,6 +132,10 @@ int Context::write_to_file() {
     TRY_WRITE(std::fprintf(fp, "%s = %s\n",  "quit-to-home-menu",          this->quit_to_home_menu          ? "yes" : "no"));
     TRY_WRITE(std::fprintf(fp, "%s = %s\n",  "override-screenshot-button", this->override_screenshot_button ? "yes" : "no"));
     TRY_WRITE(std::fprintf(fp, "%s = %ld\n", "history-size",               this->history_size));
+    TRY_WRITE(std::fprintf(fp, "%s = %s\n",  "opensubtitles-api-key",      this->opensubtitles_api_key  .c_str()));
+    TRY_WRITE(std::fprintf(fp, "%s = %s\n",  "opensubtitles-username",     this->opensubtitles_username .c_str()));
+    TRY_WRITE(std::fprintf(fp, "%s = %s\n",  "opensubtitles-password",     this->opensubtitles_password .c_str()));
+    TRY_WRITE(std::fprintf(fp, "%s = %s\n",  "opensubtitles-languages",    this->opensubtitles_languages.c_str()));
 
     for (auto &info: this->network_infos) {
         TRY_WRITE(std::fprintf(fp, "[network:%s]\n",    info->fs_name   .c_str()));

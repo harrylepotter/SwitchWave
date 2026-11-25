@@ -63,3 +63,6 @@ misc/*/*
 assets/icon.svg
 
 .DS_Store
+
+# Packaged release zips
+SwitchWave-*.zip

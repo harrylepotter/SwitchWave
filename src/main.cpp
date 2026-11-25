@@ -34,6 +34,7 @@
 #include "render.hpp"
 #include "waves.hpp"
 #include "context.hpp"
+#include "remote.hpp"
 #include "ui/ui_main_menu.hpp"
 #include "ui/ui_player.hpp"
 #include "fs/fs_common.hpp"
@@ -211,6 +212,7 @@ int menu_loop(sw::Renderer &renderer, sw::Context &context) {
         apply_pending_ums_changes(context);
 
         padUpdate(&g_pad);
+        context.remote.inject(g_pad);
         auto has_touches = hidGetTouchScreenStates(&g_touch_state, 1);
         ImGui::nx::newFrame(&g_pad, has_touches ? &g_touch_state : nullptr);
         ImGui::NewFrame();
@@ -314,6 +316,7 @@ int video_loop(sw::Renderer &renderer, sw::Context &context) {
         }
 
         padUpdate(&g_pad);
+        context.remote.inject(g_pad);
         auto has_touches = hidGetTouchScreenStates(&g_touch_state, 1);
         ImGui::nx::newFrame(&g_pad, has_touches ? &g_touch_state : nullptr);
         ImGui::NewFrame();
@@ -412,6 +415,10 @@ int main(int argc, const char **argv) {
     else
         std::printf("Failed to initialize ums controller: %#x\n", rc);
     SW_SCOPEGUARD([] { context.ums.finalize(); });
+
+    if (auto rc = context.remote.initialize(); rc)
+        std::printf("Failed to start remote control server: %s (%d)\n", std::strerror(rc), rc);
+    SW_SCOPEGUARD([] { context.remote.finalize(); });
 
     auto network_setup_thread = std::jthread([] {
         for (auto &info: context.network_infos) {

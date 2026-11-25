@@ -25,6 +25,8 @@
 #include "utils.hpp"
 #include "fs/fs_common.hpp"
 #include "fs/fs_ums.hpp"
+#include "remote.hpp"
+#include "subs.hpp"
 
 namespace sw {
 
@@ -63,6 +65,13 @@ class Context {
         bool disable_screensaver        = true;
         bool override_screenshot_button = false;
         bool quit_to_home_menu          = false;
+
+        // opensubtitles.com credentials. The api key is free from
+        // opensubtitles.com/consumers; downloads additionally need an account,
+        // since the daily quota is tracked per user.
+        utils::StaticString64 opensubtitles_api_key;
+        utils::StaticString32 opensubtitles_username, opensubtitles_password;
+        utils::StaticString32 opensubtitles_languages = "en";
 
         std::size_t history_size = 50;
         std::string cur_path;
@@ -105,6 +114,8 @@ class Context {
         std::vector<std::unique_ptr<NetworkFsInfo>> network_infos;
 
         fs::UmsController ums;
+        RemoteControl remote;
+        SubtitleDownloader subs;
 
     private:
         static inline auto config_path = fs::Path(Context::AppDirectory) / Context::SettingsFilename;

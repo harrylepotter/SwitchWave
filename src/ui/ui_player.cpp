@@ -504,6 +504,69 @@ SeekBar::~SeekBar() {
     this->renderer.unregister_texture(this->previous_texture);
 }
 
+void PlayerMenu::render_subtitle_download() {
+    auto snap = this->context.subs.snapshot();
+    auto busy = this->context.subs.busy();
+
+    {
+        ImGui::BeginDisabled(busy || this->context.cur_file.empty());
+        SW_SCOPEGUARD([] { ImGui::EndDisabled(); });
+
+        if (ImGui::Button("Search opensubtitles.com", ImVec2(-1, 0))) {
+            this->context.subs.search(this->context.cur_file, {
+                .api_key   = this->context.opensubtitles_api_key  .c_str(),
+                .username  = this->context.opensubtitles_username .c_str(),
+                .password  = this->context.opensubtitles_password .c_str(),
+                .languages = this->context.opensubtitles_languages.c_str(),
+            });
+        }
+    }
+
+    if (snap.state == SubtitleDownloader::State::Idle)
+        return;
+
+    ImGui::TextWrapped("%s", snap.message.c_str());
+
+    switch (snap.state) {
+        using enum SubtitleDownloader::State;
+
+        case Ready:
+            // Hash matches come from the exact release, so their timing is trustworthy;
+            // filename matches are a guess and may need the delay slider above
+            for (std::size_t i = 0; i < snap.results.size(); ++i) {
+                auto &r = snap.results[i];
+
+                char label[256];
+                std::snprintf(label, sizeof(label), "%s[%s] %s (%lld dl)##sub%zu",
+                    r.matched_by_hash ? "* " : "", r.language.c_str(), r.release.c_str(),
+                    static_cast<long long>(r.downloads), i);
+
+                if (ImGui::Selectable(label))
+                    this->context.subs.download(i);
+            }
+            ImGui::TextDisabled("* exact match for this file");
+            break;
+
+        case Done:
+            if (!snap.downloaded_path.empty()) {
+                if (ImGui::Button("Apply to this video", ImVec2(-1, 0))) {
+                    this->lmpv.command_async("sub-add", snap.downloaded_path.c_str(), "select");
+                    this->context.subs.reset();
+                }
+                ImGui::TextDisabled("%s", snap.downloaded_path.c_str());
+            }
+            break;
+
+        case Failed:
+            if (ImGui::Button("Dismiss##subsfail", ImVec2(-1, 0)))
+                this->context.subs.reset();
+            break;
+
+        default:
+            break;
+    }
+}
+
 bool SeekBar::update_state(PadState &pad, HidTouchScreenState &touch) {
     auto now  = std::chrono::system_clock::now();
 
@@ -1115,6 +1178,9 @@ void PlayerMenu::render() {
         if (ImGui::Button("Load external file"))
             this->cur_subwindow = (this->cur_subwindow != SubwindowType::SubtitleFilepicker) ?
                 SubwindowType::SubtitleFilepicker : SubwindowType::None;
+
+        ImGui::SeparatorText("Download");
+        this->render_subtitle_download();
 
         ImGui::SeparatorText("Delay");
         this->sub_delay_slider.run(this->lmpv, "Reset##subdelay");

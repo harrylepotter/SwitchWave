@@ -56,7 +56,9 @@ LIBUSBHSFS_LINK         :=  -lusbhsfs
 ifeq ($(LIBUSBHSFS_DEBUG),1)
 LIBUSBHSFS_LINK         :=  -lusbhsfsd
 endif
-LINKS                   :=  $(LIBUSBHSFS_LINK) -lntfs-3g -llwext4 -ldeko3d -lnx
+# json-c ships no pkg-config file in portlibs, and one unknown package makes a single
+# `pkg-config --cflags` call emit nothing at all, so it is linked by hand here
+LINKS                   :=  $(LIBUSBHSFS_LINK) -ljson-c -lntfs-3g -llwext4 -ldeko3d -lnx
 PREFIX                  :=  aarch64-none-elf-
 
 # -----------------------------------------------

@@ -70,6 +70,11 @@ int LibmpvController::initialize() {
     MPV_CALL(mpv_set_option_string(this->mpv, "config-dir", LibmpvController::MpvDirectory.data()));
     MPV_CALL(mpv_set_option_string(this->mpv, "user-agent", "SwitchWave/1.0"));
 
+    // mpv caps the volume property at volume-max, which defaults to 100, so the
+    // player's slider could never actually amplify past unity. Set before
+    // mpv_initialize() so a user's mpv.conf still wins over this default.
+    MPV_CALL(mpv_set_option_string(this->mpv, "volume-max", "200"));
+
     apply_system_http_proxy(this->mpv);
 
     MPV_CALL(mpv_initialize(this->mpv));

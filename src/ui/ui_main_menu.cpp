@@ -364,6 +364,11 @@ void MediaExplorer::render() {
         this->context.cur_file = std::move(this->explorer.selection.base());
 
     ImGui::TableNextColumn();
+
+    // Rendered before the description so an in-flight transfer stays visible
+    // even while the focus moves to another entry, or off the list entirely
+    this->render_copy_status();
+
     ImGui::SeparatorText("Description");
 
     auto ent_idx = this->explorer.cur_focused_entry;
@@ -382,6 +387,19 @@ void MediaExplorer::render() {
 
     auto [size, suffix] = utils::to_human_size(entry.size);
     ImGui::Text("Size: %.2f%s", size, suffix.data());
+
+    // The usb drive is mounted read-only, so pulling files onto the sd card is the
+    // one transfer direction we can offer here
+    if (this->context.cur_fs->type == fs::Filesystem::Type::Usb) {
+        ImGui::NewLine();
+
+        bool busy = this->copier.busy();
+        ImGui::BeginDisabled(busy);
+        SW_SCOPEGUARD([] { ImGui::EndDisabled(); });
+
+        if (ImGui::Button("Copy to SD card", ImVec2(-1, 0)) && !busy)
+            this->copier.start(Explorer::path_from_entry_name(entry.name));
+    }
 
     ImGui::NewLine();
 
@@ -433,6 +451,59 @@ void MediaExplorer::render() {
 
     ImGui::SeparatorText("Subtitles");
     bullet_wrapped("%d stream%s", i.num_sstreams, i.num_sstreams != 1 ? "s" : "");
+}
+
+void MediaExplorer::render_copy_status() {
+    auto p = this->copier.progress();
+    if (p.state == fs::FileCopier::State::Idle)
+        return;
+
+    ImGui::SeparatorText("Transfer");
+    ImGui::TextWrapped("%s", p.filename.c_str());
+
+    switch (p.state) {
+        using enum fs::FileCopier::State;
+
+        case Running: {
+            auto [done, done_suffix] = utils::to_human_size(p.copied);
+            auto [tot,  tot_suffix ] = utils::to_human_size(p.total);
+
+            char overlay[64];
+            std::snprintf(overlay, sizeof(overlay), "%.2f%s / %.2f%s",
+                done, done_suffix.data(), tot, tot_suffix.data());
+
+            ImGui::ProgressBar(p.total ? float(double(p.copied) / double(p.total)) : 0.0f,
+                ImVec2(-1, 0), overlay);
+
+            if (ImGui::Button("Cancel", ImVec2(-1, 0)))
+                this->copier.cancel();
+
+            break;
+        }
+
+        case Done:
+            ImGui::TextWrapped("Copied to %s", fs::FileCopier::destination_dir);
+            if (ImGui::Button("Dismiss", ImVec2(-1, 0)))
+                this->copier.reset();
+            break;
+
+        case Cancelled:
+            ImGui::TextWrapped("Copy cancelled");
+            if (ImGui::Button("Dismiss", ImVec2(-1, 0)))
+                this->copier.reset();
+            break;
+
+        case Failed:
+            ImGui::TextWrapped("Copy failed: %s", std::strerror(p.error));
+            if (ImGui::Button("Dismiss", ImVec2(-1, 0)))
+                this->copier.reset();
+            break;
+
+        default:
+            break;
+    }
+
+    ImGui::NewLine();
 }
 
 ConfigEditor::ConfigEditor(Renderer &renderer, Context &context): Widget(renderer), context(context) {
@@ -693,8 +764,10 @@ SettingsEditor::~SettingsEditor() {
 
 void SettingsEditor::install_swkbd_callbacks(SwkbdInline *swkbd) {
     swkbdInlineSetChangedStringCallback(ImGui::nx::getSwkbd(), +[](const char *str, SwkbdChangedStringArg *arg) {
-        if (arg->stringLen <= s_this->cur_edited_string->capacity())
-            *s_this->cur_edited_string = str;
+        if (s_this->cur_edited_data && arg->stringLen <= s_this->cur_edited_capacity) {
+            std::strncpy(s_this->cur_edited_data, str, s_this->cur_edited_capacity);
+            s_this->cur_edited_data[s_this->cur_edited_capacity - 1] = '\0';
+        }
 
         s_this->cursor_pos         = arg->cursorPos;
         s_this->want_cursor_update = true;
@@ -722,16 +795,16 @@ void SettingsEditor::install_swkbd_callbacks(SwkbdInline *swkbd) {
     });
 }
 
-void SettingsEditor::reset_swkbd_state(SwkbdInline *swkbd, const utils::StaticString32 &str, SwkbdType type) {
+void SettingsEditor::reset_swkbd_state(SwkbdInline *swkbd, const char *str, std::size_t capacity, SwkbdType type) {
     swkbdInlineMakeAppearArg(&this->appear_args, type);
-    swkbdInlineAppearArgSetStringLenMax(&this->appear_args, str.capacity());
+    swkbdInlineAppearArgSetStringLenMax(&this->appear_args, capacity);
     this->appear_args.dicFlag          = 0;
     this->appear_args.returnButtonFlag = 0;
 
     swkbdInlineSetKeytopBgAlpha(swkbd, 1.0f);
     swkbdInlineSetFooterBgAlpha(swkbd, 1.0f);
 
-    swkbdInlineSetInputText(swkbd, str.c_str());
+    swkbdInlineSetInputText(swkbd, str);
 }
 
 bool SettingsEditor::update_state(PadState &pad, HidTouchScreenState &touch) {
@@ -805,7 +878,8 @@ void SettingsEditor::render() {
 
         if (active) {
             this->cur_input_id = ImGui::GetItemID();
-            this->cur_edited_string = &str;
+            this->cur_edited_data     = str.data();
+            this->cur_edited_capacity = str.capacity();
             wanted_swkbd_type = swkbd_type;
         }
 
@@ -908,7 +982,7 @@ void SettingsEditor::render() {
 
     if ((this->cur_input_id != last_input_id) || (is_any_input_active && !this->has_swkbd_visible)) {
         this->install_swkbd_callbacks(ImGui::nx::getSwkbd());
-        this->reset_swkbd_state(ImGui::nx::getSwkbd(), *this->cur_edited_string, wanted_swkbd_type);
+        this->reset_swkbd_state(ImGui::nx::getSwkbd(), this->cur_edited_data, this->cur_edited_capacity, wanted_swkbd_type);
 
         ImGui::nx::showSwkbd(&this->appear_args);
         this->has_swkbd_visible  = true;
@@ -935,6 +1009,28 @@ void SettingsEditor::render() {
     ImGui::NewLine();
     ImGui::Text("Misc");
     ImGui::Checkbox("Quit to home menu",          &this->context.quit_to_home_menu);
+
+    ImGui::NewLine();
+    ImGui::Text("Subtitles (opensubtitles.com)");
+    ImGui::TextWrapped("An API key is free from opensubtitles.com/consumers. "
+        "Downloading also needs an account, as the daily quota is per user.");
+
+    if (ImGui::BeginTable("##subscreds", 2, ImGuiTableFlags_SizingStretchProp)) {
+        SW_SCOPEGUARD([] { ImGui::EndTable(); });
+
+        auto cred_row = [&](std::size_t i, const char *label, auto &str, ImGuiInputTextFlags flags = 0) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::Text("%s", label);
+            ImGui::TableNextColumn();
+            input_with_swkbd(1000 + i, label, str, flags);
+        };
+
+        cred_row(0, "API key",   this->context.opensubtitles_api_key);
+        cred_row(1, "Username",  this->context.opensubtitles_username);
+        cred_row(2, "Password",  this->context.opensubtitles_password, ImGuiInputTextFlags_Password);
+        cred_row(3, "Languages", this->context.opensubtitles_languages);
+    }
 
     ImGui::TableNextColumn();
     ImGui::Text("History");

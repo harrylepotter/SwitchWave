@@ -28,6 +28,7 @@
 
 #include "context.hpp"
 #include "fs/fs_common.hpp"
+#include "fs/fs_copy.hpp"
 #include "ui/ui_common.hpp"
 #include "ui/ui_explorer.hpp"
 
@@ -44,6 +45,8 @@ class MediaExplorer final: public Widget {
 
     private:
         void metadata_thread_fn(std::stop_token token);
+
+        void render_copy_status();
 
     public:
         bool is_displayed = false;
@@ -74,6 +77,8 @@ class MediaExplorer final: public Widget {
         MediaMetadata *metadata_query_target = nullptr;
 
         std::vector<std::unique_ptr<MediaMetadata>> media_metadata;
+
+        fs::FileCopier copier;
 };
 
 class ConfigEditor final: public Widget {
@@ -132,7 +137,7 @@ class SettingsEditor final: public Widget {
 
     private:
         void install_swkbd_callbacks(SwkbdInline *swkbd);
-        void reset_swkbd_state(SwkbdInline *swkbd, const utils::StaticString32 &str, SwkbdType type = SwkbdType_Normal);
+        void reset_swkbd_state(SwkbdInline *swkbd, const char *str, std::size_t capacity, SwkbdType type = SwkbdType_Normal);
 
     public:
         bool is_displayed = false;
@@ -143,7 +148,10 @@ class SettingsEditor final: public Widget {
         Renderer::Texture delete_texture;
 
         SwkbdAppearArg appear_args;
-        utils::StaticString32 *cur_edited_string;
+        // Kept as a raw buffer + capacity rather than a StaticString32 pointer, so
+        // fields of differing widths (the 64-byte api key included) can share the swkbd
+        char *cur_edited_data = nullptr;
+        std::size_t cur_edited_capacity = 0;
 
         int cursor_pos          = 0;
         bool want_cursor_update = false;
